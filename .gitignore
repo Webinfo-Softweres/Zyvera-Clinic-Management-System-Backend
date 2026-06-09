@@ -16,11 +16,35 @@ __pycache__/
 *.db
 *.sqlite3
 
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
 # IDEs and Editors
 .vscode/
 .idea/
 *.swp
 *.swo
+*.iml
+
+# Testing / Coverage
+.coverage
+htmlcov/
+.tox/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+
+# Media / uploads (IMPORTANT)
+uploads/
+media/
+files/
+storage/
 
 # Alembic
 alembic.ini.bak
