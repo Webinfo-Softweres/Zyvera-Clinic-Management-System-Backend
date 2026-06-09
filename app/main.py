@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, clinics, users
+from app.api import auth, clinics, users, patients, clinical, reports
 from app.core.exceptions import NotFoundException, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException
 from app.schemas.common import ErrorResponse
 from app.middleware.audit import AuditMiddleware
@@ -44,6 +44,9 @@ async def conflict_exception_handler(request: Request, exc: ConflictException):
 app.include_router(auth.router, prefix="/api/v1/auth")
 app.include_router(clinics.router, prefix="/api/v1/clinics")
 app.include_router(users.router, prefix="/api/v1/users")
+app.include_router(patients.router, prefix="/api/v1/patients")
+app.include_router(clinical.router, prefix="/api/v1/clinical")
+app.include_router(reports.router, prefix="/api/v1/reports")
 
 @app.get("/health", tags=["Health"])
 def health_check():
