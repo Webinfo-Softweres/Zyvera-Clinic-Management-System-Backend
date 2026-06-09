@@ -1,16 +1,41 @@
-from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends, HTTPException, Request
+import os
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, clinics, users
-from app.core.exceptions import NotFoundException, UnauthorizedException, ForbiddenException, BadRequestException, ConflictException
-from app.schemas.common import ErrorResponse
-from app.middleware.audit import AuditMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from typing import List, Optional
+
+from app.core.database import engine, Base, get_db
+from app.models.clinical_data import ClinicalData
+from app.schemas.clinical import (
+    ClinicalDataCreate,
+    ClinicalDataUpdate,
+    ClinicalDataResponse,
+    StandardResponse
+)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize DB schema on startup
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    # Clean up on shutdown
+    await engine.dispose()
 
 app = FastAPI(
-    title="Homoeo Clinic Management System API",
-    description="Multi-tenant backend for clinic management",
-    version="1.0.0"
+    title="Clinical Data API",
+    description="Simple Production Ready FastAPI Backend for ClinicalData",
+    version="1.0.0",
+    lifespan=lifespan
 )
+
+# Configure CORS / Allowed Hosts
+# Set ALLOWED_HOSTS in your .env, e.g., ALLOWED_HOSTS="http://localhost:3000,https://myfrontend.com"
+allowed_hosts_env = os.getenv("ALLOWED_HOSTS", "*")
+origins = [origin.strip() for origin in allowed_hosts_env.split(",")] if allowed_hosts_env else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,32 +47,103 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(AuditMiddleware)
 
-@app.exception_handler(NotFoundException)
-async def not_found_exception_handler(request: Request, exc: NotFoundException):
-    return JSONResponse(status_code=exc.status_code, content=ErrorResponse(message=exc.detail).model_dump())
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"success": False, "message": f"Internal server error: {str(exc)}"}
+    )
 
-@app.exception_handler(UnauthorizedException)
-async def unauthorized_exception_handler(request: Request, exc: UnauthorizedException):
-    return JSONResponse(status_code=exc.status_code, content=ErrorResponse(message=exc.detail).model_dump(), headers=exc.headers)
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"success": False, "message": exc.detail}
+    )
 
-@app.exception_handler(ForbiddenException)
-async def forbidden_exception_handler(request: Request, exc: ForbiddenException):
-    return JSONResponse(status_code=exc.status_code, content=ErrorResponse(message=exc.detail).model_dump())
+# ---------------------------------------------------------
+# API ROUTES
+# ---------------------------------------------------------
 
-@app.exception_handler(BadRequestException)
-async def bad_request_exception_handler(request: Request, exc: BadRequestException):
-    return JSONResponse(status_code=exc.status_code, content=ErrorResponse(message=exc.detail).model_dump())
+@app.post("/api/v1/clinical", response_model=StandardResponse)
+async def create_clinical_record(record_in: ClinicalDataCreate, db: AsyncSession = Depends(get_db)):
+    db_record = ClinicalData(**record_in.model_dump())
+    db.add(db_record)
+    await db.commit()
+    await db.refresh(db_record)
+    return StandardResponse(
+        success=True,
+        message="Record created successfully",
+        data=ClinicalDataResponse.model_validate(db_record).model_dump()
+    )
 
-@app.exception_handler(ConflictException)
-async def conflict_exception_handler(request: Request, exc: ConflictException):
-    return JSONResponse(status_code=exc.status_code, content=ErrorResponse(message=exc.detail).model_dump())
+@app.get("/api/v1/clinical", response_model=StandardResponse)
+async def get_all_records(
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(ClinicalData)
+        
+    result = await db.execute(query)
+    records = result.scalars().all()
+    
+    data = [ClinicalDataResponse.model_validate(r).model_dump() for r in records]
+    
+    return StandardResponse(
+        success=True,
+        message="Records retrieved successfully",
+        data=data
+    )
 
-app.include_router(auth.router, prefix="/api/v1/auth")
-app.include_router(clinics.router, prefix="/api/v1/clinics")
-app.include_router(users.router, prefix="/api/v1/users")
+@app.get("/api/v1/clinical/{id}", response_model=StandardResponse)
+async def get_single_record(id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ClinicalData).where(ClinicalData.id == id))
+    record = result.scalars().first()
+    
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+        
+    return StandardResponse(
+        success=True,
+        message="Record retrieved successfully",
+        data=ClinicalDataResponse.model_validate(record).model_dump()
+    )
 
-@app.get("/health", tags=["Health"])
-def health_check():
-    return {"status": "ok"}
+@app.patch("/api/v1/clinical/{id}", response_model=StandardResponse)
+async def update_record(id: str, record_in: ClinicalDataUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ClinicalData).where(ClinicalData.id == id))
+    record = result.scalars().first()
+    
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    
+    # Only update provided fields
+    update_data = record_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(record, field, value)
+        
+    await db.commit()
+    await db.refresh(record)
+    
+    return StandardResponse(
+        success=True,
+        message="Record updated successfully",
+        data=ClinicalDataResponse.model_validate(record).model_dump()
+    )
+
+@app.delete("/api/v1/clinical/{id}", response_model=StandardResponse)
+async def delete_record(id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ClinicalData).where(ClinicalData.id == id))
+    record = result.scalars().first()
+    
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+        
+    await db.delete(record)
+    await db.commit()
+    
+    return StandardResponse(
+        success=True,
+        message="Record deleted successfully",
+        data=None
+    )
