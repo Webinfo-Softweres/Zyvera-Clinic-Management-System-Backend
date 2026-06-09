@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
+import os
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List, Optional
@@ -28,6 +30,22 @@ app = FastAPI(
     description="Simple Production Ready FastAPI Backend for ClinicalData",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# Configure CORS / Allowed Hosts
+# Set ALLOWED_HOSTS in your .env, e.g., ALLOWED_HOSTS="http://localhost:3000,https://myfrontend.com"
+allowed_hosts_env = os.getenv("ALLOWED_HOSTS", "*")
+origins = [origin.strip() for origin in allowed_hosts_env.split(",")] if allowed_hosts_env else ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.exception_handler(Exception)
