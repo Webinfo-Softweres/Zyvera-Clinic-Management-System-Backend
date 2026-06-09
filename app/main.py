@@ -14,6 +14,7 @@ from app.schemas.clinical import (
     StandardResponse
 )
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB schema on startup
@@ -28,6 +29,16 @@ app = FastAPI(
     description="Simple Production Ready FastAPI Backend for ClinicalData",
     version="1.0.0",
     lifespan=lifespan
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.exception_handler(Exception)
