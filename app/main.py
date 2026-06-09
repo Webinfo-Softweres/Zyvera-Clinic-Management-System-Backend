@@ -62,15 +62,9 @@ async def create_clinical_record(record_in: ClinicalDataCreate, db: AsyncSession
 
 @app.get("/api/v1/clinical", response_model=StandardResponse)
 async def get_all_records(
-    centre_code: Optional[str] = None,
-    hospital_no: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
     query = select(ClinicalData)
-    if centre_code:
-        query = query.where(ClinicalData.centre_code == centre_code)
-    if hospital_no:
-        query = query.where(ClinicalData.hospital_no == hospital_no)
         
     result = await db.execute(query)
     records = result.scalars().all()

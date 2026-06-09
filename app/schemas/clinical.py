@@ -177,8 +177,7 @@ class ClinicalDataBase(BaseModel):
 
 
 class ClinicalDataCreate(ClinicalDataBase):
-    centre_code: str
-    hospital_no: str
+    pass
 
 
 class ClinicalDataUpdate(ClinicalDataBase):
@@ -187,8 +186,6 @@ class ClinicalDataUpdate(ClinicalDataBase):
 
 class ClinicalDataResponse(ClinicalDataBase):
     id: str
-    centre_code: str
-    hospital_no: str
     created_at: datetime
     updated_at: datetime
 
